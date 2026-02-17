@@ -1,13 +1,20 @@
-
 import os
 import oracledb
+from dotenv import load_dotenv
 
-# En GitHub Actions usamos la ruta donde instalamos el client en el paso anterior
-lib_dir = os.getenv("ORACLE_HOME")
+load_dotenv()
+
+# Detectar si estamos en GitHub o Local para la ruta del cliente
+if os.getenv("GITHUB_ACTIONS") == "true":
+    # Ruta definida en el YAML arriba
+    oracle_path = "/opt/oracle/instantclient_23_0"
+else:
+    # Tu ruta local de Windows
+    oracle_path = r"F:\OCIfunctions\oracle\instantclient_23_0"
 
 try:
-    # Iniciamos Thick Mode para soportar Wallets fácilmente
-    oracledb.init_oracle_client(lib_dir=lib_dir)
+    oracledb.init_oracle_client(lib_dir=oracle_path)
+    print(f"Thick mode habilitado en: {oracle_path}")
     
     conn = oracledb.connect(
         user=os.getenv("DB_USER"),
@@ -17,15 +24,13 @@ try:
         wallet_password=os.getenv("WALLET_PASSWORD")
     )
     
-    print("Conexión exitosa a Oracle Cloud desde el Runner!")
-    
-    # Aquí irá la lógica de extracción de metadatos que haremos en el siguiente paso
     cur = conn.cursor()
-    cur.execute("SELECT table_name FROM user_tables")
-    for row in cur:
-        print(f"Tabla encontrada: {row[0]}")
-        
+    cur.execute("select sysdate from dual")
+    print("SYS_DATE =", cur.fetchone()[0])
+    
+    cur.close()
     conn.close()
+    print("Conexion OK en GitHub")
 except Exception as e:
-    print(f"Error conectando a Oracle: {e}")
-    exit(1)
+    print(f"Error de conexión: {e}")
+    exit(1) # Importante para que el pipeline marque fallo si no conecta
