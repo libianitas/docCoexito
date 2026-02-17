@@ -1,16 +1,58 @@
+name: Oracle DB Connection Test
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
 jobs:
-  build:
-    runs-on: ubuntu-24.04 # o ubuntu-latest
+  run-python-script:
+    runs-on: ubuntu-24.04
+
+    env:
+      # Estos secretos deben estar en Settings > Secrets and variables > Actions
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      DB_SERVICE: ${{ secrets.DB_SERVICE }}
+      WALLET_PASSWORD: ${{ secrets.WALLET_PASSWORD }}
+      WALLET_DIR: ${{ github.workspace }}/wallet  # Ruta donde extraeremos el wallet
+      LD_LIBRARY_PATH: /opt/oracle/instantclient_23_0
+
     steps:
-      - name: Instalar dependencias del sistema
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Instalar dependencias del sistema (Ubuntu 24.04)
         run: |
           sudo apt-get update
-          sudo apt-get install -y libaio1t64  # <--- Esta es la solución para Ubuntu 24.04
-          
-      - name: Setup Python
-        uses: actions/setup-python@v4
+          sudo apt-get install -y libaio1t64 wget unzip
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # Aquí instalarías el Instant Client de Linux y configurarías 
-      # LD_LIBRARY_PATH para que oracledb lo encuentre.
+      - name: Instalar librerías de Python
+        run: |
+          pip install oracledb python-dotenv
+
+      - name: Descargar e Instalar Oracle Instant Client (Linux)
+        run: |
+          sudo mkdir -p /opt/oracle
+          cd /opt/oracle
+          # Descargamos la versión "Basic Light" para Linux x64
+          sudo wget https://download.oracle.com/otn_software/linux/instantclient/237000/instantclient-basiclight-linux.x64-23.7.0.25.01.zip
+          sudo unzip instantclient-basiclight-linux.x64-23.7.0.25.01.zip
+          # Creamos un enlace simbólico para que la ruta sea fija
+          sudo ln -s instantclient_23_7 instantclient_23_0
+
+      - name: Preparar Wallet (Opcional si usas ADB)
+        run: |
+          mkdir -p ${{ env.WALLET_DIR }}
+          # Aquí asumo que tienes tu wallet (cwallet.sso, etc.) en un secreto base64 
+          # o guardado en el repo (aunque no se recomienda en el repo)
+          echo "${{ secrets.WALLET_BASE64 }}" | base64 -d > ${{ env.WALLET_DIR }}/wallet.zip
+          unzip ${{ env.WALLET_DIR }}/wallet.zip -d ${{ env.WALLET_DIR }}
+
+      - name: Ejecutar script de conexión
+        run: python main.py
