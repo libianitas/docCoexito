@@ -1,63 +1,63 @@
-name: Oracle Connection Workflow
+name: ADW Thin + Wallet (DB_* secrets)
 
 on:
-  push:
-    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
-  run-oracle-test:
-    runs-on: ubuntu-24.04
-
-    # Variables de entorno para el script de Python y el sistema
-    env:
-      DB_USER: ${{ secrets.DB_USER }}
-      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-      DB_SERVICE: ${{ secrets.DB_SERVICE }}
-      WALLET_PASSWORD: ${{ secrets.WALLET_PASSWORD }}
-      WALLET_DIR: ${{ github.workspace }}/wallet
-      # Ruta donde instalaremos el cliente de Oracle
-      LD_LIBRARY_PATH: /opt/oracle/instantclient
+  adw:
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout del repositorio
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Instalar dependencias del sistema (Ubuntu 24.04)
-        run: |
-          sudo apt-get update
-          # libaio1t64 es CRÍTICO para Ubuntu 24.04
-          sudo apt-get install -y libaio1t64 wget unzip
-
-      - name: Configurar Python 3.11
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
-      - name: Instalar dependencias de Python
+      - name: Install deps
         run: |
-          pip install oracledb python-dotenv
+          python -m pip install --upgrade pip
+          pip install oracledb
 
-      - name: Descargar e Instalar Oracle Instant Client
+      # 1) Decodificar wallet desde secret (CAMBIA el nombre si tu secret se llama distinto)
+      - name: Decode Wallet
+        env:
+          WALLET_B64: ${{ secrets.WALLET_B64 }}
         run: |
-          sudo mkdir -p /opt/oracle
-          cd /opt/oracle
-          # Usamos un enlace de repositorio público más estable (Versión 21.16)
-          sudo wget https://download.oracle.com/otn_software/linux/instantclient/2116000/instantclient-basiclight-linux.x64-21.16.0.0.0dbru.zip
-          sudo unzip instantclient-basiclight-linux.x64-21.16.0.0.0dbru.zip
-          # Creamos un enlace simbólico genérico para LD_LIBRARY_PATH
-          sudo ln -s /opt/oracle/instantclient_21_16 /opt/oracle/instantclient
+          mkdir -p wallet
+          echo "$WALLET_B64" | base64 -d > wallet.zip
+          unzip -o wallet.zip -d wallet
+          echo "Wallet files:"
+          ls -la wallet
 
-      - name: Configurar Wallet desde Secretos
-        # Este paso asume que tienes el contenido de tu wallet en Base64 en los secretos de GitHub
+      # 2) Asegurar que sqlnet.ora apunte al directorio correcto (CRÍTICO en runners)
+      - name: Fix sqlnet.ora DIRECTORY
         run: |
-          mkdir -p ${{ env.WALLET_DIR }}
-          if [ -n "${{ secrets.WALLET_BASE64 }}" ]; then
-            echo "${{ secrets.WALLET_BASE64 }}" | base64 -d > ${{ env.WALLET_DIR }}/wallet.zip
-            unzip ${{ env.WALLET_DIR }}/wallet.zip -d ${{ env.WALLET_DIR }}
-          else
-            echo "Aviso: No se encontró WALLET_BASE64. Asegúrate de que el wallet esté en el repo o en secretos."
-          fi
+          sed -i 's|DIRECTORY=".*"|DIRECTORY="./wallet"|g' wallet/sqlnet.ora || true
+          sed -i 's|DIRECTORY=.*|DIRECTORY=./wallet|g' wallet/sqlnet.ora || true
+          echo "=== sqlnet.ora ==="
+          cat wallet/sqlnet.ora
 
-      - name: Ejecutar Script Python
-        run: python main.py
+      # 3) Test de conexión (Thin + Wallet)
+      - name: Test ADW connection
+        env:
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_SERVICE: ${{ secrets.DB_SERVICE }}
+          WALLET_PASSWORD: ${{ secrets.WALLET_PASSWORD }}
+          WALLET_DIR: ${{ github.workspace }}/wallet
+        run: |
+          python - <<'PY'
+          import os
+          import oracledb
+
+          user = os.environ["DB_USER"]
+          password = os.environ["DB_PASSWORD"]
+          dsn = os.environ["DB_SERVICE"]          # TNS alias (ej: adwanalyticsprod_high)
+          wallet_dir = os.environ["WALLET_DIR"]   # /home/runner/work/<repo>/<repo>/wallet
+          wallet_password = os.environ["WALLET_PASSWORD"]
+
+          # Thin + Wallet: set defaults (más estable en CI)
+          oracledb.defaults.config_dir = wallet_d
