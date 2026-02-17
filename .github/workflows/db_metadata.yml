@@ -38,13 +38,15 @@ jobs:
 
       - name: Descargar e Instalar Oracle Instant Client (Linux)
         run: |
+          sudo apt-get update
+          sudo apt-get install -y libaio1t64 wget unzip
           sudo mkdir -p /opt/oracle
           cd /opt/oracle
-          # Descargamos la versión "Basic Light" para Linux x64
-          sudo wget https://download.oracle.com/otn_software/linux/instantclient/237000/instantclient-basiclight-linux.x64-23.7.0.25.01.zip
-          sudo unzip instantclient-basiclight-linux.x64-23.7.0.25.01.zip
-          # Creamos un enlace simbólico para que la ruta sea fija
-          sudo ln -s instantclient_23_7 instantclient_23_0
+          # Usamos la versión 23.5 que suele tener mayor persistencia en el enlace
+          sudo wget https://download.oracle.com/otn_software/linux/instantclient/235000/instantclient-basiclight-linux.x64-23.5.0.24.07.zip
+          sudo unzip instantclient-basiclight-linux.x64-23.5.0.24.07.zip
+          # Creamos el enlace simbólico para que coincida con tu LD_LIBRARY_PATH
+          sudo ln -s instantclient_23_5 instantclient_23_0
 
       - name: Preparar Wallet (Opcional si usas ADB)
         run: |
