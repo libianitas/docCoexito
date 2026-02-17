@@ -1,48 +1,16 @@
-name: Oracle Metadata Extractor
-
-on:
-  workflow_dispatch: # Permite ejecutarlo manualmente
-
 jobs:
-  extract-metadata:
-    runs-on: ubuntu-latest
-
+  build:
+    runs-on: ubuntu-24.04 # o ubuntu-latest
     steps:
-      - name: Checkout del código
-        uses: actions/checkout@v4
-
-      - name: Configurar Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Instalar Dependencias del Sistema (Oracle Client)
+      - name: Instalar dependencias del sistema
         run: |
           sudo apt-get update
-          sudo apt-get install -y libaio1
-          mkdir -p /opt/oracle
-          cd /opt/oracle
-          # Descargamos el Instant Client para Linux
-          wget https://download.oracle.com/otn_software/linux/instantclient/211000/instantclient-basic-linux.x64-21.1.0.0.0.zip
-          unzip instantclient-basic-linux.x64-21.1.0.0.0.zip
-          echo "LD_LIBRARY_PATH=/opt/oracle/instantclient_21_1" >> $GITHUB_ENV
+          sudo apt-get install -y libaio1t64  # <--- Esta es la solución para Ubuntu 24.04
+          
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
 
-      - name: Despaquetar Wallet
-        run: |
-          mkdir -p ${{ github.workspace }}/wallet
-          echo "${{ secrets.WALLET_ZIP }}" | base64 -d > ${{ github.workspace }}/wallet/wallet.zip
-          unzip ${{ github.workspace }}/wallet/wallet.zip -d ${{ github.workspace }}/wallet/
-
-      - name: Instalar dependencias de Python
-        run: |
-          pip install oracledb python-dotenv
-
-      - name: Probar Conexión
-        env:
-          DB_USER: ${{ secrets.DB_USER }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          DB_SERVICE: ${{ secrets.DB_SERVICE }}
-          WALLET_DIR: ${{ github.workspace }}/wallet
-          WALLET_PASSWORD: ${{ secrets.WALLET_PASSWORD }}
-          ORACLE_HOME: /opt/oracle/instantclient_21_1
-        run: python script_metadata.py
+      # Aquí instalarías el Instant Client de Linux y configurarías 
+      # LD_LIBRARY_PATH para que oracledb lo encuentre.
