@@ -1,4 +1,4 @@
-name: Oracle DB Connection Test
+name: Oracle Connection Workflow
 
 on:
   push:
@@ -6,55 +6,58 @@ on:
   workflow_dispatch:
 
 jobs:
-  run-python-script:
+  run-oracle-test:
     runs-on: ubuntu-24.04
 
+    # Variables de entorno para el script de Python y el sistema
     env:
-      # Estos secretos deben estar en Settings > Secrets and variables > Actions
       DB_USER: ${{ secrets.DB_USER }}
       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
       DB_SERVICE: ${{ secrets.DB_SERVICE }}
       WALLET_PASSWORD: ${{ secrets.WALLET_PASSWORD }}
-      WALLET_DIR: ${{ github.workspace }}/wallet  # Ruta donde extraeremos el wallet
-      LD_LIBRARY_PATH: /opt/oracle/instantclient_23_0
+      WALLET_DIR: ${{ github.workspace }}/wallet
+      # Ruta donde instalaremos el cliente de Oracle
+      LD_LIBRARY_PATH: /opt/oracle/instantclient
 
     steps:
-      - name: Checkout código
+      - name: Checkout del repositorio
         uses: actions/checkout@v4
 
       - name: Instalar dependencias del sistema (Ubuntu 24.04)
         run: |
           sudo apt-get update
+          # libaio1t64 es CRÍTICO para Ubuntu 24.04
           sudo apt-get install -y libaio1t64 wget unzip
 
-      - name: Configurar Python
+      - name: Configurar Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Instalar librerías de Python
+      - name: Instalar dependencias de Python
         run: |
           pip install oracledb python-dotenv
 
-      - name: Descargar e Instalar Oracle Instant Client (Linux)
+      - name: Descargar e Instalar Oracle Instant Client
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libaio1t64 wget unzip
           sudo mkdir -p /opt/oracle
           cd /opt/oracle
-          # Usamos la versión 23.5 que suele tener mayor persistencia en el enlace
-          sudo wget https://download.oracle.com/otn_software/linux/instantclient/235000/instantclient-basiclight-linux.x64-23.5.0.24.07.zip
-          sudo unzip instantclient-basiclight-linux.x64-23.5.0.24.07.zip
-          # Creamos el enlace simbólico para que coincida con tu LD_LIBRARY_PATH
-          sudo ln -s instantclient_23_5 instantclient_23_0
+          # Usamos un enlace de repositorio público más estable (Versión 21.16)
+          sudo wget https://download.oracle.com/otn_software/linux/instantclient/2116000/instantclient-basiclight-linux.x64-21.16.0.0.0dbru.zip
+          sudo unzip instantclient-basiclight-linux.x64-21.16.0.0.0dbru.zip
+          # Creamos un enlace simbólico genérico para LD_LIBRARY_PATH
+          sudo ln -s /opt/oracle/instantclient_21_16 /opt/oracle/instantclient
 
-      - name: Preparar Wallet (Opcional si usas ADB)
+      - name: Configurar Wallet desde Secretos
+        # Este paso asume que tienes el contenido de tu wallet en Base64 en los secretos de GitHub
         run: |
           mkdir -p ${{ env.WALLET_DIR }}
-          # Aquí asumo que tienes tu wallet (cwallet.sso, etc.) en un secreto base64 
-          # o guardado en el repo (aunque no se recomienda en el repo)
-          echo "${{ secrets.WALLET_BASE64 }}" | base64 -d > ${{ env.WALLET_DIR }}/wallet.zip
-          unzip ${{ env.WALLET_DIR }}/wallet.zip -d ${{ env.WALLET_DIR }}
+          if [ -n "${{ secrets.WALLET_BASE64 }}" ]; then
+            echo "${{ secrets.WALLET_BASE64 }}" | base64 -d > ${{ env.WALLET_DIR }}/wallet.zip
+            unzip ${{ env.WALLET_DIR }}/wallet.zip -d ${{ env.WALLET_DIR }}
+          else
+            echo "Aviso: No se encontró WALLET_BASE64. Asegúrate de que el wallet esté en el repo o en secretos."
+          fi
 
-      - name: Ejecutar script de conexión
+      - name: Ejecutar Script Python
         run: python main.py
